@@ -43,6 +43,7 @@ class Mirrorer:
         # into representations that are easier for the mirrorer to work with
         self.index_path = args.index_path
         self.index_url = args.index_url
+        self.package_type_regex: str = args.package_type_regex
         self.config = configparser.ConfigParser()
         self.config.read(args.config)
         self.envs = {}
@@ -194,9 +195,10 @@ class Mirrorer:
         files: Iterable[dict],
     ) -> Iterable[dict]:
         # remove files with unsupported extensions
+        pattern: str = rf"\.{self.package_type_regex}$"
         files = list(
             filter(
-                lambda file: re.search(r"\.(whl|zip|tar.gz)$", file["filename"]), files
+                lambda file: re.search(pattern, file["filename"]), files
             )
         )
 
@@ -537,6 +539,15 @@ def main():
         dest="config",
         nargs="?",
         help="Config file (default: <INDEX_PATH>/morgan.ini)",
+    )
+    parser.add_argument(
+        "--package-type-regex",
+        dest="package_type_regex",
+        default="(whl|zip|tar.gz)",
+        type=str,
+        nargs="?",
+        const="(whl|zip|tar.gz)",
+        help="Package types (default: '(whl|zip|tar.gz)')",
     )
 
     server.add_arguments(parser)
