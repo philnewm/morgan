@@ -43,6 +43,7 @@ class Mirrorer:
         # into representations that are easier for the mirrorer to work with
         self.index_path = args.index_path
         self.index_url = args.index_url
+        self.all_versions: bool = args.all_versions
         self.config = configparser.ConfigParser()
         self.config.read(args.config)
         self.envs = {}
@@ -262,8 +263,9 @@ class Mirrorer:
 
         # Only keep files from the latest version that satisifies all
         # specifiers and environments
-        latest_version = files[0]["version"]
-        files = list(filter(lambda file: file["version"] == latest_version, files))
+        if not self.all_versions:
+            latest_version = files[0]["version"]
+            files = list(filter(lambda file: file["version"] == latest_version, files))
 
         return files
 
@@ -537,6 +539,13 @@ def main():
         dest="config",
         nargs="?",
         help="Config file (default: <INDEX_PATH>/morgan.ini)",
+    )
+    parser.add_argument(
+        "-a",
+        "--all-versions",
+        dest="all_versions",
+        action="store_true",
+        help="Filter for latest version (default: False)",
     )
 
     server.add_arguments(parser)
