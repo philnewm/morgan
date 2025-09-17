@@ -9,6 +9,7 @@ import tarfile
 import traceback
 import urllib.parse
 import urllib.request
+import urllib.error
 import zipfile
 from typing import Dict, Iterable, Tuple
 
@@ -43,6 +44,7 @@ class Mirrorer:
         # into representations that are easier for the mirrorer to work with
         self.index_path = args.index_path
         self.index_url = args.index_url
+        self.all_versions: bool = args.all_versions
         self.config = configparser.ConfigParser()
         self.config.read(args.config)
         self.envs = {}
@@ -133,17 +135,27 @@ class Mirrorer:
 
         data: dict = None
 
-        # get information about this package from the Simple API in JSON
-        # format as per PEP 691
-        request = urllib.request.Request(
-            "{}{}/".format(self.index_url, requirement.name),
-            headers={
-                "Accept": "application/vnd.pypi.simple.v1+json",
-            },
-        )
+        try:
+            # get information about this package from the Simple API in JSON
+            # format as per PEP 691
+            request = urllib.request.Request(
+                "{}{}/".format(self.index_url, requirement.name),
+                headers={
+                    "Accept": "application/vnd.pypi.simple.v1+json",
+                },
+            )
 
-        with urllib.request.urlopen(request) as response:
-            data = json.load(response)
+            with urllib.request.urlopen(request) as response:
+                data = json.load(response)
+
+        except urllib.error.HTTPError as err:
+            if err.code == 404:
+                # skip system deps like dbus (not on PyPI)
+                print(f"\tSkipping {requirement.name}, required by {required_by} (not found on {self.index_url})")
+                self._processed_pkgs[req_str] = True
+                return {}
+            else:
+                raise
 
         # check metadata version ~1.0
         v_str = data["meta"]["api-version"]
@@ -262,8 +274,9 @@ class Mirrorer:
 
         # Only keep files from the latest version that satisifies all
         # specifiers and environments
-        latest_version = files[0]["version"]
-        files = list(filter(lambda file: file["version"] == latest_version, files))
+        if not self.all_versions:
+            latest_version = files[0]["version"]
+            files = list(filter(lambda file: file["version"] == latest_version, files))
 
         return files
 
@@ -537,6 +550,13 @@ def main():
         dest="config",
         nargs="?",
         help="Config file (default: <INDEX_PATH>/morgan.ini)",
+    )
+    parser.add_argument(
+        "-a",
+        "--all-versions",
+        dest="all_versions",
+        action="store_true",
+        help="Filter for latest version (default: False)",
     )
 
     server.add_arguments(parser)
