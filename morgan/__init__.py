@@ -44,11 +44,8 @@ class Mirrorer:
         # into representations that are easier for the mirrorer to work with
         self.index_path = args.index_path
         self.index_url = args.index_url
-<<<<<<< HEAD
         self.package_type_regex: str = args.package_type_regex
-=======
         self.all_versions: bool = args.all_versions
->>>>>>> origin/override-version-filter
         self.config = configparser.ConfigParser()
         self.config.read(args.config)
         self.envs = {}
