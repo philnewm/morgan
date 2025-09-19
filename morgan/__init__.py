@@ -336,7 +336,7 @@ class Mirrorer:
         self,
         requirement: packaging.requirements.Requirement,
         fileinfo: dict,
-    ) -> Dict[str, packaging.requirements.Requirement]:
+    ) -> Dict[packaging.utils.NormalizedName, Dict[str, packaging.requirements.Requirement]]:
         filepath = os.path.join(self.index_path, requirement.name, fileinfo["filename"])
         hashalg = (
             PREFERRED_HASH_ALG
