@@ -20,6 +20,7 @@ import packaging.version
 
 from morgan import configurator, metadata, server
 from morgan.__about__ import __version__
+from morgan.registry import LocalRegistry, Registry
 from morgan.utils import to_single_dash
 
 PYPI_ADDRESS = "https://pypi.org/simple/"
@@ -67,6 +68,7 @@ class Mirrorer:
                 )
 
         self._processed_pkgs = {}
+        self.target_registry: Registry = LocalRegistry(self._hash_file, self.index_path)
 
     def mirror(self, requirement_string: str):
         """
@@ -342,7 +344,11 @@ class Mirrorer:
             else fileinfo["hashes"].keys()[0]
         )
 
-        self._download_file(fileinfo, filepath, hashalg)
+        # Check if package already exists in target registry
+        if not self.target_registry.has_package(
+            fileinfo["filename"], requirement.name, hashalg, fileinfo["hashes"][hashalg]
+        ):
+            self._download_file(fileinfo, filepath, hashalg)
 
         md = self._extract_metadata(filepath, requirement.name, fileinfo["version"])
 
@@ -367,8 +373,6 @@ class Mirrorer:
     ) -> bool:
         exphash = fileinfo["hashes"][hashalg]
 
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-
         # if target already exists, verify its hash and only download if
         # there's a mismatch
         if os.path.exists(target):
@@ -376,6 +380,7 @@ class Mirrorer:
             if truehash == exphash:
                 return True
 
+        os.makedirs(os.path.dirname(target), exist_ok=True)
         print("\t{}...".format(fileinfo["url"]), end=" ")
         with urllib.request.urlopen(fileinfo["url"]) as inp, open(target, "wb") as out:
             out.write(inp.read())
@@ -441,6 +446,7 @@ class Mirrorer:
         archive.close()
 
         return md
+
 
 
 def parse_interpreter(inp: str) -> Tuple[str, str]:
