@@ -541,7 +541,6 @@ def main():
         help="Config file (default: <INDEX_PATH>/morgan.ini)",
     )
     parser.add_argument(
-        "-t",
         "--package-type-regex",
         dest="package_type_regex",
         default="(whl|zip|tar.gz)",
