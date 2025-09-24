@@ -149,11 +149,7 @@ class GitLabRegistry(Registry):
         hash_alg: str,
         expected_hash: Optional[str] = None,
     ) -> bool:
-        if expected_hash:
-            print("Warning: hash verification is not implemented yet")
-
         packages = self._fetch_packages_list()
-
         for package in packages:
             if package.get("name") != package_name:
                 continue
