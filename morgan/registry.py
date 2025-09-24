@@ -85,26 +85,25 @@ class GitLabRegistry(Registry):
         self.registry_url = registry_url
         self.project = project
         self.token = token
-        self._package_files_cache: Optional[list] = None
+        self.headers = {}
+        if self.token:
+            self.headers["Authorization"] = f"Bearer {self.token}"
+        self._packages_cache: Optional[list] = None
+        self._package_files_cache: dict[int, list] = {}
 
     @property
     def name(self) -> str:
         return f"GitLab ({self.registry_url})"
 
-    def _fetch_package_files(self) -> list:
+    def _fetch_packages_list(self) -> list:
         """Fetch package files from the API and cache the result."""
-        if self._package_files_cache is not None:
-            return self._package_files_cache
+        if self._packages_cache is not None:
+            return self._packages_cache
 
-        # Construct the API URL to query the package
         api_url = f"{self.registry_url}/api/v4/projects/{self.project}/packages"
 
-        headers = {}
-        if self.token:
-            headers["Authorization"] = f"Bearer {self.token}"
-
         try:
-            request = urllib.request.Request(api_url, headers=headers)
+            request = urllib.request.Request(api_url, headers=self.headers)
             with urllib.request.urlopen(request) as response:
                 package_list = json.load(response)
         except (urllib.error.URLError, json.JSONDecodeError) as e:
@@ -115,8 +114,33 @@ class GitLabRegistry(Registry):
                 f"Unexpected response format from {self.name}, expected a list: {package_list}"
             )
 
-        self._package_files_cache = package_list
+        self._packages_cache = package_list
         return package_list
+
+    def _fetch_package_files(self, package_id: int) -> list:
+        """Fetch package files from the API and cache the result."""
+        if (
+            package_id in self._package_files_cache
+            and self._package_files_cache[package_id] is not None
+        ):
+            return self._package_files_cache[package_id]
+
+        api_url = f"{self.registry_url}/api/v4/projects/{self.project}/packages/{package_id}/package_files"
+
+        try:
+            request = urllib.request.Request(api_url, headers=self.headers)
+            with urllib.request.urlopen(request) as response:
+                package_file_list = json.load(response)
+        except (urllib.error.URLError, json.JSONDecodeError) as e:
+            raise RuntimeError(f"Failed to fetch package files from {api_url}") from e
+
+        if not isinstance(package_file_list, list):
+            raise RuntimeError(
+                f"Unexpected response format from {self.name}, expected a list: {package_file_list}"
+            )
+
+        self._package_files_cache[package_id] = package_file_list
+        return self._package_files_cache[package_id]
 
     def has_package(
         self,
@@ -128,16 +152,25 @@ class GitLabRegistry(Registry):
         if expected_hash:
             print("Warning: hash verification is not implemented yet")
 
-        package_files = self._fetch_package_files()
+        packages = self._fetch_packages_list()
 
-        # Look for the specific file
-        for file_info in package_files:
-            if file_info.get("file_name") == file_name:
-                return True
-                # TODO: Implement hash checking using "https://gitlab.example.com/api/v4/projects/:id/packages/:package_id/package_files"
+        for package in packages:
+            if package.get("name") != package_name:
+                continue
+
+            for file_info in self._fetch_package_files(package.get("id")):
+                if file_info.get("file_name") != file_name:
+                    continue
+
+                if file_info.get(f"file_{hash_alg}") == expected_hash:
+                    return True
+                else:
+                    raise RuntimeError(
+                        f"Hash of {file_name} does not match, unknown how to proceed"
+                    )
 
         return False
 
     def clear_cache(self):
         """Clear the cached package files. Useful for testing or if registry content changes."""
-        self._package_files_cache = None
+        self._packages_cache = None
