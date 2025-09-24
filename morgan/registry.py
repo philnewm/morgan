@@ -98,7 +98,7 @@ class GitLabRegistry(Registry):
 
         # Construct the API URL to query the package
         api_url = (
-            f"{self.registry_url}/api/v4/projects/{self.project}/packages/pypi/files"
+            f"{self.registry_url}/api/v4/projects/{self.project}/packages"
         )
 
         headers = {}
