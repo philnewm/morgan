@@ -21,6 +21,7 @@ import packaging.version
 from morgan import configurator, metadata, server
 from morgan.__about__ import __version__
 from morgan.utils import to_single_dash
+from morgan.registry import LocalRegistry, Registry
 
 PYPI_ADDRESS = "https://pypi.org/simple/"
 PREFERRED_HASH_ALG = "sha256"
@@ -67,6 +68,7 @@ class Mirrorer:
                 )
 
         self._processed_pkgs = {}
+        self.target_registry: Registry = LocalRegistry(self._hash_file, self.index_path)
 
     def mirror(self, requirement_string: str):
         """
@@ -342,7 +344,7 @@ class Mirrorer:
             else fileinfo["hashes"].keys()[0]
         )
 
-        self._download_file(fileinfo, filepath, hashalg)
+        self._download_file(fileinfo, requirement.name, filepath, hashalg)
 
         md = self._extract_metadata(filepath, requirement.name, fileinfo["version"])
 
@@ -362,6 +364,7 @@ class Mirrorer:
     def _download_file(
         self,
         fileinfo: dict,
+        requirement_name: str,
         target: str,
         hashalg: str,
     ) -> bool:
@@ -369,12 +372,11 @@ class Mirrorer:
 
         os.makedirs(os.path.dirname(target), exist_ok=True)
 
-        # if target already exists, verify its hash and only download if
-        # there's a mismatch
-        if os.path.exists(target):
-            truehash = self._hash_file(target, hashalg)
-            if truehash == exphash:
-                return True
+        # Try to get package from target registry
+        if self.target_registry.has_package(
+            fileinfo["filename"], requirement_name, hashalg, exphash
+        ):
+            return True
 
         print("\t{}...".format(fileinfo["url"]), end=" ")
         with urllib.request.urlopen(fileinfo["url"]) as inp, open(target, "wb") as out:
