@@ -127,9 +127,7 @@ class GitLabRegistry(Registry):
         expected_hash: Optional[str] = None,
     ) -> bool:
         if expected_hash:
-            raise NotImplementedError(
-                "hash verification is not implemented for GitLabRegistry yet"
-            )
+            print("Warning: hash verification is not implemented yet")
 
         package_files = self._fetch_package_files()
 

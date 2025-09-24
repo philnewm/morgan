@@ -561,11 +561,11 @@ def main():
         dest="target_url",
         default=None,
         type=my_url,
-        help="Base URL of the target repository. If not specified, defaults to the local Package Index",
+        help="Base URL of the target repository. For example, \"https://gitlab.example.com\". If not specified, defaults to the local Package Index.",
     )
     parser.add_argument(
         "-T",
-        "--target-token",
+        "--target-auth-bearer",
         dest="target_token",
         default=None,
         type=str,
