@@ -5,6 +5,7 @@ This module provides abstractions for working with different target package regi
 for mirroring.
 """
 
+import json
 import os
 import urllib.error
 import urllib.request
