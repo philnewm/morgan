@@ -558,7 +558,6 @@ def main():
         help="Skip server copy in mirror command (default: False)",
     )
     parser.add_argument(
-        "-t",
         "--package-type-regex",
         dest="package_type_regex",
         default="(whl|zip|tar.gz)",
