@@ -84,7 +84,7 @@ class GitLabRegistry(Registry):
         self.registry_url = registry_url
         self.project = project
         self.token = token
-        self._package_files_cache: Optional[list]
+        self._package_files_cache: Optional[list] = None
 
     @property
     def name(self) -> str:
