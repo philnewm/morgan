@@ -97,9 +97,7 @@ class GitLabRegistry(Registry):
             return self._package_files_cache
 
         # Construct the API URL to query the package
-        api_url = (
-            f"{self.registry_url}/api/v4/projects/{self.project}/packages"
-        )
+        api_url = f"{self.registry_url}/api/v4/projects/{self.project}/packages"
 
         headers = {}
         if self.token:
@@ -110,7 +108,7 @@ class GitLabRegistry(Registry):
             with urllib.request.urlopen(request) as response:
                 package_list = json.load(response)
         except (urllib.error.URLError, json.JSONDecodeError) as e:
-            raise RuntimeError(f"Failed to fetch package files from {self.name}") from e
+            raise RuntimeError(f"Failed to fetch package files from {api_url}") from e
 
         if not isinstance(package_list, list):
             raise RuntimeError(
