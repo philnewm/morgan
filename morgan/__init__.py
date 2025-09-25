@@ -7,6 +7,7 @@ import os.path
 import re
 import tarfile
 import traceback
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
@@ -69,6 +70,7 @@ class Mirrorer:
 
         self._processed_pkgs = {}
         self.target_registry: Registry = self._find_target_registry(args)
+        self.use_pypi_metadata: bool = args.use_pypi_metadata or False
 
     def mirror(self, requirement_string: str):
         """
@@ -350,7 +352,12 @@ class Mirrorer:
         ):
             self._download_file(fileinfo, filepath, hashalg)
 
-        md = self._extract_metadata(filepath, requirement.name, fileinfo["version"])
+        if self.use_pypi_metadata:
+            md = self._extract_metadata_from_pypi(requirement.name, fileinfo["version"])
+        else:
+            md = self._extract_metadata_from_file(
+                filepath, requirement.name, fileinfo["version"]
+            )
 
         deps = md.dependencies(requirement.extras, self.envs.values())
         if deps is None:
@@ -422,7 +429,7 @@ class Mirrorer:
 
         return truehash.hexdigest()
 
-    def _extract_metadata(
+    def _extract_metadata_from_file(
         self,
         filepath: str,
         package: str,
@@ -458,6 +465,29 @@ class Mirrorer:
 
         return md
 
+    def _extract_metadata_from_pypi(
+        self,
+        package: str,
+        version: packaging.version.Version,
+    ) -> metadata.MetadataParser:
+        """Extract package metadata from PyPI's JSON API.
+
+        Args:
+            package: The name of the package.
+            version: The version of the package.
+
+        Returns:
+            A MetadataParser object filled with metadata from PyPI.
+
+        Raises:
+            urllib.error.HTTPError: If there's an error fetching metadata from PyPI.
+        """
+        md = metadata.PyPIMetadataParsers(package, str(version))
+        try:
+            return md.parse_pypi()
+        except urllib.error.HTTPError as e:
+            print(f"\tError fetching metadata from PyPI: {e}")
+            raise e
 
 
 def parse_interpreter(inp: str) -> Tuple[str, str]:
@@ -583,6 +613,18 @@ def main():
         nargs="?",
         help="Config file (default: <INDEX_PATH>/morgan.ini)",
     )
+    parser.add_argument(
+        "--use-pypi-metadata",
+        dest="use_pypi_metadata",
+        action="store_true",
+        help=(
+            "Use PyPI's JSON API to fetch package metadata instead of relying on "
+            "downloaded files in the package-index."
+            "Enabling this option can yield less dependencies being pulled in as "
+            "some dependencies within pyproject.toml (e.g. build-system dependencies "
+            "like poetry) are not considered package dependencies for PyPi."
+        ),
+    )
 
     server.add_arguments(parser)
     configurator.add_arguments(parser)
@@ -605,6 +647,9 @@ def main():
     # Validate that target-gitlab-project requires target-url
     if args.target_gitlab_project and not args.target_url:
         parser.error("--target-gitlab-project requires --target-url to be specified")
+
+    if args.target_gitlab_project and not args.use_pypi_metadata:
+        parser.error("--target-gitlab-project requires --use-pypi-metadata")
 
     # These commands do not require a configuration file and therefore should
     # be executed prior to sanity checking the configuration
