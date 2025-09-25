@@ -1,5 +1,9 @@
 import email.parser
+import gzip
+import json
 import re
+import urllib.error
+import urllib.request
 from typing import Dict, Set, Callable, BinaryIO, Iterable
 
 from packaging.version import Version
@@ -336,3 +340,81 @@ class MetadataParser:
             self._add_build_requirements(content)
         else:
             self._add_core_requirements(content)
+
+
+class PyPIMetadataParsers(MetadataParser):
+    """Metadata Parser for PyPI's JSON API.
+
+    This class extends MetadataParser to parse metadata from PyPI's JSON API
+    without needing an opener/filename for local files.
+    """
+
+    def __init__(self, package_name: str, version_str: str):
+        super().__init__(f"pypi:{package_name}-{version_str}")
+        self.package_name = package_name
+        self.version_str = version_str
+
+    def parse(
+        self,
+        opener: Callable[[str], BinaryIO],
+        filename: str,
+    ):
+        raise NotImplementedError(
+            "Use parse_pypi() instead of parse() for PyPIMetadataParsers"
+        )
+
+    def parse_pypi(self) -> MetadataParser:
+        """Extract package metadata from PyPI's JSON API.
+
+        Returns:
+            A MetadataParser object populated with metadata from PyPI.
+
+        Raises:
+            urllib.error.HTTPError: If the API request fails.
+            ValueError: If the API response is invalid or cannot be parsed.
+        """
+
+        url = f"https://pypi.org/pypi/{self.package_name}/{self.version_str}/json"
+
+        request = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/json",
+                "Accept-Encoding": "gzip",
+            },
+        )
+
+        with urllib.request.urlopen(request) as response:
+            # Check if response is gzip-encoded
+            if response.headers.get("Content-Encoding") == "gzip":
+                with gzip.GzipFile(fileobj=response) as gzip_response:
+                    data = json.load(gzip_response)
+            else:
+                data = json.load(response)
+
+        received_version = data["info"].get("version")
+        if self.version_str != received_version:
+            raise ValueError(
+                f"Version mismatch: requested {self.version_str}, got {received_version}"
+            )
+
+        # Create and populate the metadata parser
+        self.name = canonicalize_name(data["info"]["name"])
+        self.version = Version(received_version)
+
+        # Extract Python requirement
+        requires_python = data["info"].get("requires_python")
+        if requires_python:
+            self.python_requirement = SpecifierSet(requires_python)
+
+        provides_extra = data["info"].get("provides_extra")
+        if provides_extra:
+            self.extras_provided |= set(provides_extra)
+
+        # Parse dependencies
+        requires_dist = data["info"].get("requires_dist")
+        if requires_dist is not None:
+            for requirement_str in requires_dist:
+                self._parse_requires_dist(requirement_str)
+
+        return self
