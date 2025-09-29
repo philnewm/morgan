@@ -7,6 +7,7 @@ import os.path
 import re
 import tarfile
 import traceback
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
@@ -21,6 +22,7 @@ import packaging.version
 from morgan import configurator, metadata, server
 from morgan.__about__ import __version__
 from morgan.utils import to_single_dash
+from morgan.registry import GitLabRegistry, LocalRegistry, Registry
 
 PYPI_ADDRESS = "https://pypi.org/simple/"
 PREFERRED_HASH_ALG = "sha256"
@@ -69,6 +71,8 @@ class Mirrorer:
                 )
 
         self._processed_pkgs = {}
+        self.target_registry: Registry = self._find_target_registry(args)
+        self.use_pypi_metadata: bool = args.use_pypi_metadata or False
 
     def mirror(self, requirement_string: str):
         """
@@ -347,9 +351,12 @@ class Mirrorer:
             else fileinfo["hashes"].keys()[0]
         )
 
-        self._download_file(fileinfo, filepath, hashalg)
+        self._download_file(fileinfo, requirement.name, filepath, hashalg)
 
-        md = self._extract_metadata(filepath, requirement.name, fileinfo["version"])
+        if self.use_pypi_metadata:
+            md = self._extract_metadata_from_pypi(requirement.name, fileinfo["version"])
+        else:
+            md = self._extract_metadata_from_file(filepath, requirement.name, fileinfo["version"])
 
         deps = md.dependencies(requirement.extras, self.envs.values())
         if deps is None:
@@ -368,9 +375,21 @@ class Mirrorer:
             }
         return depdict
 
+    def _find_target_registry(self, args: argparse.Namespace) -> Registry:
+        if args.target_url is None:
+            return LocalRegistry(self._hash_file, self.index_path)
+
+        if args.target_gitlab_project:
+            return GitLabRegistry(
+                args.target_url, args.target_gitlab_project, args.target_token
+            )
+
+        raise NotImplementedError("Target registry is not supported")
+
     def _download_file(
         self,
         fileinfo: dict,
+        requirement_name: str,
         target: str,
         hashalg: str,
     ) -> bool:
@@ -378,12 +397,11 @@ class Mirrorer:
 
         os.makedirs(os.path.dirname(target), exist_ok=True)
 
-        # if target already exists, verify its hash and only download if
-        # there's a mismatch
-        if os.path.exists(target):
-            truehash = self._hash_file(target, hashalg)
-            if truehash == exphash:
-                return True
+        # Try to get package from target registry
+        if self.target_registry.has_package(
+            fileinfo["filename"], requirement_name, hashalg, exphash
+        ):
+            return True
 
         print("\t{}...".format(fileinfo["url"]), end=" ")
         with urllib.request.urlopen(fileinfo["url"]) as inp, open(target, "wb") as out:
@@ -410,7 +428,7 @@ class Mirrorer:
 
         return truehash.hexdigest()
 
-    def _extract_metadata(
+    def _extract_metadata_from_file(
         self,
         filepath: str,
         package: str,
@@ -446,6 +464,29 @@ class Mirrorer:
 
         return md
 
+    def _extract_metadata_from_pypi(
+        self,
+        package: str,
+        version: packaging.version.Version,
+    ) -> metadata.MetadataParser:
+        """Extract package metadata from PyPI's JSON API.
+
+        Args:
+            package: The name of the package.
+            version: The version of the package.
+
+        Returns:
+            A MetadataParser object filled with metadata from PyPI.
+
+        Raises:
+            urllib.error.HTTPError: If there's an error fetching metadata from PyPI.
+        """
+        md = metadata.PyPIMetadataParsers(package, str(version))
+        try:
+            return md.parse_pypi()
+        except urllib.error.HTTPError as e:
+            print(f"\tError fetching metadata from PyPI: {e}")
+            raise e
 
 def parse_interpreter(inp: str) -> Tuple[str, str]:
     """
@@ -543,6 +584,29 @@ def main():
         help="Base URL of the Python Package Index",
     )
     parser.add_argument(
+        "-t",
+        "--target-url",
+        dest="target_url",
+        default=None,
+        type=my_url,
+        help="Base URL of the target repository. For example, \"https://gitlab.example.com\". If not specified, defaults to the local Package Index.",
+    )
+    parser.add_argument(
+        "-T",
+        "--target-auth-bearer",
+        dest="target_token",
+        default=None,
+        type=str,
+        help="Authorisation Token for the target repository.",
+    )
+    parser.add_argument(
+        "--target-gitlab-project",
+        dest="target_gitlab_project",
+        default=None,
+        type=str,
+        help="The Gitlab Project that will be used as a target repository.",
+    )
+    parser.add_argument(
         "-c",
         "--config",
         dest="config",
@@ -571,6 +635,18 @@ def main():
         action="store_true",
         help="Filter for latest version (default: False)",
     )
+    parser.add_argument(
+        "--use-pypi-metadata",
+        dest="use_pypi_metadata",
+        action="store_true",
+        help=(
+            "Use PyPI's JSON API to fetch package metadata instead of relying on "
+            "downloaded files in the package-index."
+            "Enabling this option can yield less dependencies being pulled in as "
+            "some dependencies within pyproject.toml (e.g. build-system dependencies "
+            "like poetry) are not considered package dependencies for PyPi."
+        ),
+    )
 
     server.add_arguments(parser)
     configurator.add_arguments(parser)
@@ -589,6 +665,13 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Validate that target-gitlab-project requires target-url
+    if args.target_gitlab_project and not args.target_url:
+        parser.error("--target-gitlab-project requires --target-url to be specified")
+
+    if args.target_gitlab_project and not args.use_pypi_metadata:
+        parser.error("--target-gitlab-project requires --use-pypi-metadata")
 
     # These commands do not require a configuration file and therefore should
     # be executed prior to sanity checking the configuration
