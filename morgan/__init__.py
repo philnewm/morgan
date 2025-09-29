@@ -44,6 +44,7 @@ class Mirrorer:
         self.index_path = args.index_path
         self.index_url = args.index_url
         self.package_type_regex: str = args.package_type_regex
+        self.all_versions: bool = args.all_versions
         self.config = configparser.ConfigParser()
         self.config.read(args.config)
         self.envs = {}
@@ -159,7 +160,7 @@ class Mirrorer:
             raise Exception("Expected response to contain a list of 'files'")
 
         # filter and enrich files
-        files = self._filter_files(requirement, files)
+        files = self._filter_files(requirement, required_by, files)
         if files is None:
             if required_by is None:
                 raise Exception("No files match requirement")
@@ -192,6 +193,7 @@ class Mirrorer:
     def _filter_files(
         self,
         requirement: packaging.requirements.Requirement,
+        required_by: packaging.requirements.Requirement,
         files: Iterable[dict],
     ) -> Iterable[dict]:
         # remove files with unsupported extensions
@@ -262,10 +264,11 @@ class Mirrorer:
             print(f"Skipping {requirement}, no file matches environments")
             return None
 
-        # Only keep files from the latest version that satisifies all
-        # specifiers and environments
-        latest_version = files[0]["version"]
-        files = list(filter(lambda file: file["version"] == latest_version, files))
+        # Only keep files from the latest version in case the package is a dependency of another
+        # otherwise, if it's a top-level package, make it dependent on the all_versions flag
+        if not self.all_versions or required_by is not None:
+            latest_version = files[0]["version"]
+            files = list(filter(lambda file: file["version"] == latest_version, files))
 
         return files
 
@@ -355,7 +358,11 @@ class Mirrorer:
         depdict = {}
         for dep in deps:
             dep.name = packaging.utils.canonicalize_name(dep.name)
-            depdict[dep.name] = {
+            # keep the index of the dictionary for the full requirement string to pull in potentially
+            # duplicate requirements like "mylibrary<2,>=1" and "mylibrary>=2,<3" that may come from different
+            # top-level requirements
+            dep_index = packaging.utils.canonicalize_name(str(dep))
+            depdict[dep_index] = {
                 "requirement": dep,
                 "required_by": requirement,
             }
@@ -556,6 +563,13 @@ def main():
         nargs="?",
         const="(whl|zip|tar.gz)",
         help="Package types (default: '(whl|zip|tar.gz)')",
+    )
+    parser.add_argument(
+        "-a",
+        "--all-versions",
+        dest="all_versions",
+        action="store_true",
+        help="Filter for latest version (default: False)",
     )
 
     server.add_arguments(parser)
