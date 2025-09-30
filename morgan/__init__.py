@@ -21,12 +21,11 @@ import packaging.version
 
 from morgan import configurator, metadata, server
 from morgan.__about__ import __version__
-from morgan.utils import to_single_dash
 from morgan.registry import GitLabRegistry, LocalRegistry, Registry
+from morgan.utils import ListExtendingOrderedDict, to_single_dash
 
 PYPI_ADDRESS = "https://pypi.org/simple/"
 PREFERRED_HASH_ALG = "sha256"
-
 
 class Mirrorer:
     """
@@ -47,7 +46,12 @@ class Mirrorer:
         self.index_url = args.index_url
         self.package_type_regex: str = args.package_type_regex
         self.all_versions: bool = args.all_versions
-        self.config = configparser.ConfigParser()
+        if args.enforce_unique_requirements:
+            self.config = configparser.ConfigParser(strict=True)
+        else:
+            self.config = configparser.ConfigParser(
+                strict=False, dict_type=ListExtendingOrderedDict
+            )
         self.config.read(args.config)
         self.envs = {}
         self._supported_pyversions = []
@@ -645,6 +649,15 @@ def main():
             "Enabling this option can yield less dependencies being pulled in as "
             "some dependencies within pyproject.toml (e.g. build-system dependencies "
             "like poetry) are not considered package dependencies for PyPi."
+        ),
+    )
+    parser.add_argument(
+        "--enforce-unique-requirements",
+        dest="enforce_unique_requirements",
+        action="store_true",
+        help=(
+            "Fail if a package appears more than once in the requirements section of a morgan.ini file "
+            "(default: accumulate all requirements)"
         ),
     )
 
