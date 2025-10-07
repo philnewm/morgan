@@ -545,8 +545,6 @@ def main():
         dest="package_type_regex",
         default="(whl|zip|tar.gz)",
         type=str,
-        nargs="?",
-        const="(whl|zip|tar.gz)",
         help="Package types (default: '(whl|zip|tar.gz)')",
     )
 
