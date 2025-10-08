@@ -234,9 +234,10 @@ class GitLabRegistry(Registry):
             if package.get("name") != package_name:
                 continue
 
-            for file_info in self._fetch_package_files(package.get("id")):
+            mylist = self._fetch_package_files(package.get("id"))
+
+            for file_info in mylist:
                 if file_info.get("file_name") != file_name:
-                    print("Did not find file in registry. {} != {}".format(file_info.get("file_name"), file_name))
                     continue
 
                 if file_info.get(f"file_{hash_alg}") == expected_hash:
@@ -246,6 +247,11 @@ class GitLabRegistry(Registry):
                         f"Hash of {file_name} does not match, unknown how to proceed"
                     )
 
+            print(f"Found no matching file for {file_name} in package {package_name}")
+            print(mylist)
+            return False
+
+        print(f"Found no matching package for {package_name}")
         return False
 
     def clear_cache(self):
