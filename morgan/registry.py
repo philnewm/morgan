@@ -247,7 +247,7 @@ class GitLabRegistry(Registry):
                         f"Hash of {file_name} does not match, unknown how to proceed"
                     )
 
-            print(f"Found no matching file for {file_name} in package {package_name}")
+            print(f"Found no matching file for {file_name} in package {package_name}:")
             print(mylist)
             return False
 
