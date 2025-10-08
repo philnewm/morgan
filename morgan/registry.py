@@ -251,7 +251,8 @@ class GitLabRegistry(Registry):
             print(mylist)
             return False
 
-        print(f"Found no matching package for {package_name}")
+        print(f"Found no matching package for {package_name}:")
+        print(packages)
         return False
 
     def clear_cache(self):
