@@ -42,6 +42,15 @@ class Registry(ABC):
     def name(self) -> str:
         """Return the name of this registry."""
 
+    @staticmethod
+    def normalize_name(name: str) -> str:
+        """Normalize package name for comparison.
+
+        Args:
+            name: The original package or file name.
+        """
+        return name.strip().lower()
+
 
 class LocalRegistry(Registry):
     """Registry implementation that checks the local file system."""
@@ -140,7 +149,7 @@ class GitLabRegistry(Registry):
                     continue
 
                 name, value = param.split("=", 1)
-                name = name.strip().lower()  # Normalize to lowercase
+                name = Registry.normalize_name(name)  # Normalize to lowercase
                 value = value.strip()
 
                 if name != "rel":
@@ -230,14 +239,17 @@ class GitLabRegistry(Registry):
         expected_hash: Optional[str] = None,
     ) -> bool:
         packages = self._fetch_packages_list()
+        file_name = Registry.normalize_name(file_name)
+        package_name = Registry.normalize_name(package_name)
+
         for package in packages:
-            if package.get("name") != package_name:
+            if Registry.normalize_name(package.get("name")) != package_name:
                 continue
 
             mylist = self._fetch_package_files(package.get("id"))
 
             for file_info in mylist:
-                if file_info.get("file_name") != file_name:
+                if Registry.normalize_name(file_info.get("file_name")) != file_name:
                     continue
 
                 if file_info.get(f"file_{hash_alg}") == expected_hash:
