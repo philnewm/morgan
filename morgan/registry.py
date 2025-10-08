@@ -236,6 +236,7 @@ class GitLabRegistry(Registry):
 
             for file_info in self._fetch_package_files(package.get("id")):
                 if file_info.get("file_name") != file_name:
+                    print("Did not find file in registry. {} != {}".format(file_info.get("file_name"), file_name))
                     continue
 
                 if file_info.get(f"file_{hash_alg}") == expected_hash:
